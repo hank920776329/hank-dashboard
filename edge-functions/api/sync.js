@@ -1,6 +1,7 @@
 /**
  * 双端同步 · EdgeOne Pages 边缘函数 · Blob 版
  * 路由：/edge-functions/api/sync.js  →  https://你的域名/api/sync
+ * 国内版 EdgeOne Makers 使用 export function onRequest(context) 单一入口
  *
  * ── 什么时候用这一版 ──
  *   KV 版要在控制台提申请、等腾讯云人工审核才能开通。这一版不用审核，
@@ -25,10 +26,16 @@ const MAX_FAIL = 5;
 const LOCK_MS = 5 * 60 * 1000;
 const MAX_BYTES = 700 * 1024;    // 受限于请求体 1MB，不是受限于 Blob
 
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-headers': 'content-type'
+};
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8' }
+    headers: { ...CORS, 'content-type': 'application/json; charset=utf-8' }
   });
 }
 
@@ -73,8 +80,16 @@ function mergeAll(server, client) {
   return out;
 }
 
-export async function onRequestPost(context) {
+export async function onRequest(context) {
   const { request } = context;
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS });
+  }
+  if (request.method !== 'POST') {
+    return json({ error: '只接受 POST/OPTIONS 请求' }, 405);
+  }
+
   const s = store();
 
   let body;
@@ -154,12 +169,4 @@ export async function onRequestPost(context) {
   }
 
   return json({ error: '未知操作' }, 400);
-}
-
-/** 浏览器预检 */
-export function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: { 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' }
-  });
 }
