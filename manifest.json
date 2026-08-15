@@ -1,0 +1,19 @@
+{
+  "name": "Hank的工作台",
+  "short_name": "HANK",
+  "description": "软包装印刷厂巡厂与部门管理个人工作台",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdf8e8",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
