@@ -1,3 +1,9 @@
 node_modules/
 .DS_Store
 *.tmp
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+  
