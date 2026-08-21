@@ -472,6 +472,13 @@ const Store = (() => {
     return [...m.values()];
   }
 
+  // 巡厂环节按名字去重（云端/多端合并会带来同名不同 id 的重复项）
+  function dedupeByName(arr){
+    const seen = new Map();
+    (Array.isArray(arr) ? arr : []).forEach(x => { if (x && x.name && !seen.has(x.name)) seen.set(x.name, x); });
+    return Array.from(seen.values());
+  }
+
   const S = {
     get(key, fallback = null){
       const v = driver.get(NS + key);
@@ -581,7 +588,8 @@ const Store = (() => {
         if (key.startsWith('_')) continue;
         const lv = this.get(key, null);
         if (Array.isArray(rv)) {
-          const merged = mergeList(Array.isArray(lv) ? lv : [], rv);
+          let merged = mergeList(Array.isArray(lv) ? lv : [], rv);
+          if (key === 'tour_sections') merged = dedupeByName(merged);
           if (JSON.stringify(merged) !== JSON.stringify(lv)) { driver.set(NS + key, merged); changed++; }
         } else if (lv === null || lv === undefined) {
           driver.set(NS + key, rv); changed++;
