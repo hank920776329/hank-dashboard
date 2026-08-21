@@ -797,8 +797,17 @@ const Tour = {
   sections(){
     let s = Store.get('tour_sections', null);
     if (!Array.isArray(s) || !s.length) {
-      s = DEPTS.map(d => ({ id: Util.uid(), name: d }));
+      // 默认环节用固定 id（基于名字），避免多端同步后同名不同 id 导致重复
+      s = DEPTS.map(d => ({ id: 'dept-' + d, name: d }));
       Store.set('tour_sections', s);
+    }
+    // 按 name 去重：保留第一次出现的 id，清理历史重复和同步合并带来的同名项
+    const seen = new Map();
+    s.forEach(x => { if (x && x.name && !seen.has(x.name)) seen.set(x.name, x); });
+    const deduped = Array.from(seen.values());
+    if (deduped.length !== s.length) {
+      Store.set('tour_sections', deduped);
+      s = deduped;
     }
     return s;
   },
