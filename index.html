@@ -251,7 +251,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
           <input id="tourNewSection" class="input" placeholder="新增环节，如 仓库 / 配电房 / 消防" maxlength="12" onkeydown="if(event.key==='Enter')Tour.addSectionFromInput()" />
           <button class="btn ghost" onclick="Tour.addSectionFromInput()">＋ 添加</button>
         </div>
-        <p class="hint">点环节名=已巡；✎ 改名；✕ 删除。9 个生产环节为默认，可自由增删改名。</p>
+        <p class="hint">默认无环节，点击下方添加你每天固定的环节。点环节名=已巡；✎ 改名；✕ 删除。<a href="javascript:void(0)" onclick="Tour.clearAllSections()" style="color:var(--red);font-size:12px;margin-left:8px">清空全部环节</a></p>
       </div>
     </section>
     <!-- ==== 功能：巡厂打卡 END ==== -->
@@ -425,7 +425,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
 
 <script>
 /* 共享常量 */
-const DEPTS = ['接单','制版','原材料入库','印刷','覆膜','品检','制袋','分切','成品出库'];
+const DEPTS = []; // 默认不预置任何环节，由用户自行添加每天固定的 3–4 条
 function currentQuarter(){
   const y = new Date().getFullYear();
   const q = Math.floor(new Date().getMonth() / 3) + 1;
@@ -879,6 +879,13 @@ const Tour = {
     Store.set('tour_sections', secs);
     Store.setDaily('tour_visited', Store.getDaily('tour_visited', []).map(x => x === t.name ? name : x));
     this.renderDepts();
+  },
+  clearAllSections(){
+    if (!confirm('清空全部环节？已巡记录也会一起清空，本操作不可撤销。')) return;
+    Store.set('tour_sections', []);
+    Store.setDaily('tour_visited', []);
+    this.renderDepts();
+    UI.toast('已清空，请添加你每天固定的环节');
   }
 };
 /* ==== 功能：巡厂打卡 END ==== */
