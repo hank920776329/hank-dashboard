@@ -886,6 +886,8 @@ const Tour = {
     Store.setDaily('tour_visited', []);
     this.renderDepts();
     UI.toast('已清空，请添加你每天固定的环节');
+    // 开了同步则立即强制覆盖云端，避免旧的 9 个环节被拉回来
+    if (typeof Sync !== 'undefined' && Sync.on()) Sync.push(true);
   }
 };
 /* ==== 功能：巡厂打卡 END ==== */
@@ -1417,13 +1419,15 @@ const Sync = {
     this._timer = setTimeout(() => this.push(), this.DEBOUNCE);
   },
 
-  async push(){
+  async push(force){
     if (!this.on() || this._busy) return 0;
     this._busy = true; this.status('同步中');
     try {
-      const remote = await this.ghGet();
-      const dump = await this.remoteToDump(remote);
-      Store.mergeRemote(dump);
+      if (!force) {
+        const remote = await this.ghGet();
+        const dump = await this.remoteToDump(remote);
+        Store.mergeRemote(dump);
+      }
       const enc = await Crypto.encrypt(JSON.stringify(Store.dump()), this.pass());
       const id = await this.ghPut(this.cfg().gistId, enc);
       if (id !== this.cfg().gistId) Store.set('_sync', { on:true, gistId:id });
