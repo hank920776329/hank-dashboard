@@ -370,27 +370,30 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
         <h2>🔄 双端同步 <span class="hint" id="syncState" style="margin:0 0 0 auto;font-size:var(--fs-meta)"></span></h2>
         <div id="syncOff">
           <p class="hint" style="margin-top:0">
-            开启后手机和电脑都填同一套（同一个令牌 + 同一个同步密码），数据自动对齐。<br>
-            <b>数据存在一个私有的 GitHub Gist 里，并用下面的「同步密码」AES 加密</b>，没有密码谁也读不了（包括 GitHub）。<br>
+            开启后手机和电脑都填同一套（同一个用户名 + 同一个仓库 + 同一个令牌 + 同一个同步密码），数据自动对齐。<br>
+            <b>数据存在你 GitHub 仓库的一个文件里，并用下面的「同步密码」AES 加密</b>，没有密码谁也读不了（包括 GitHub）。<br>
             <b>密码忘了无法恢复</b>，建议先导出一份备份再开。
           </p>
           <div style="margin-top:14px">
-            <input type="password" id="syncToken" placeholder="个人访问令牌 PAT（ghp_ 开头，需 gist 权限）" autocomplete="off">
+            <input type="text" id="syncOwner" placeholder="GitHub 用户名" value="hank920776329" autocomplete="off">
           </div>
           <div style="margin-top:10px">
-            <input type="password" id="syncPass" placeholder="同步密码（至少 8 位，加密 Gist 里的数据）" autocomplete="new-password">
+            <input type="text" id="syncRepo" placeholder="仓库名" value="hank-dashboard" autocomplete="off">
           </div>
           <div style="margin-top:10px">
-            <input type="text" id="syncGistId" placeholder="已有 Gist ID（可选）— 想连上另一台设备已开的同步就填它" autocomplete="off">
+            <input type="password" id="syncToken" placeholder="个人访问令牌 PAT（ghp_ 开头，需 repo 权限）" autocomplete="off">
+          </div>
+          <div style="margin-top:10px">
+            <input type="password" id="syncPass" placeholder="同步密码（至少 8 位，加密仓库里的数据）" autocomplete="new-password">
           </div>
           <div class="row" style="margin-top:14px">
             <button class="btn" onclick="Settings.enableSync()">开启同步</button>
             <button class="btn ghost" onclick="Store.exportFile()">先导出备份</button>
           </div>
-          <p class="hint">令牌只需 <b>gist</b> 权限（可在 GitHub 新建一个只勾 gist 的令牌专用于同步）；密码忘了本地这份还在，云端那份打不开。<br>两台设备首次开：先开一台（自动建 Gist），把设置页里显示的「Gist ID」抄给另一台，填进上面的框即可共用同一个同步，数据互通。</p>
+          <p class="hint">令牌需 <b>repo</b> 权限（你推代码那个令牌就能用）；密码忘了本地这份还在，云端那份打不开。<br>两台设备填<b>同一个用户名+仓库+令牌+密码</b>即可共用同一份云端数据，自动互通。</p>
         </div>
         <div id="syncOn" style="display:none">
-          <p class="hint" style="margin-top:0">Gist：<b id="syncWho" class="mono"></b><br>上次同步：<span id="syncTime"></span></p>
+          <p class="hint" style="margin-top:0">仓库：<b id="syncWho" class="mono"></b><br>上次同步：<span id="syncTime"></span></p>
           <div class="row" style="margin-top:14px">
             <button class="btn" onclick="Sync.pull(true)">立即同步</button>
             <button class="btn ghost" onclick="Settings.changePass()">改密码</button>
@@ -1214,14 +1217,15 @@ const Settings = {
 
   enableSync(){
     Sync.enable(
+      document.getElementById('syncOwner').value,
+      document.getElementById('syncRepo').value,
       document.getElementById('syncToken').value,
-      document.getElementById('syncPass').value,
-      document.getElementById('syncGistId').value
+      document.getElementById('syncPass').value
     );
   },
 
   changePass(){
-    const np = prompt('输入新密码（至少 8 位，用于加密 Gist 里的数据）');
+    const np = prompt('输入新密码（至少 8 位，用于加密仓库里的数据）');
     if (np) Sync.changePass(np);
   },
 
@@ -1233,7 +1237,7 @@ const Settings = {
     document.getElementById('syncOn').style.display  = on ? 'block' : 'none';
     if (on) {
       const c = Sync.cfg();
-      document.getElementById('syncWho').textContent = c.gistId || '—';
+      document.getElementById('syncWho').textContent = c.owner + '/' + c.repo;
       const t = Store.get('_syncAt');
       document.getElementById('syncTime').textContent =
         t ? new Date(t).toLocaleString('zh-CN') : '还没同步过';
@@ -1251,8 +1255,8 @@ const Settings = {
 
 
 /* ==== 双端同步 START ==== */
-/* ==== 双端同步：GitHub Gist 版 START ==== */
-// 加密：AES-GCM，密钥由密码经 PBKDF2 派生。数据存在私有 Gist 里，靠密码加密保护。
+/* ==== 双端同步：GitHub 仓库文件版 START ==== */
+// 加密：AES-GCM，密钥由密码经 PBKDF2 派生。数据存在仓库文件 sync/hank-data.json 里，靠密码加密保护。
 const Crypto = (() => {
   const enc = new TextEncoder(), dec = new TextDecoder();
   async function keyFrom(pass, salt){
@@ -1284,11 +1288,16 @@ const Sync = {
   _timer: null,
   _busy: false,
 
-  cfg(){ return Store.get('_sync', { on:false, gistId:'' }); },
+  cfg(){
+    const def = { on:false, owner:'hank920776329', repo:'hank-dashboard', path:'sync/hank-data.json' };
+    const s = Store.get('_sync', {});
+    return Object.assign(def, s);
+  },
   on(){ return !!this.cfg().on; },
   token(){ return Store.getSecret('syncToken') || ''; },
   pass(){ return Store.getSecret('syncPass') || ''; },
   file(){ return 'hank-data.json'; },
+  apiBase(){ const c=this.cfg(); return 'https://api.github.com/repos/' + c.owner + '/' + c.repo + '/contents/' + c.path; },
 
   headers(){
     const h = { 'Accept':'application/vnd.github+json', 'content-type':'application/json',
@@ -1297,46 +1306,23 @@ const Sync = {
     return h;
   },
 
-  // 读取私有 Gist 里的加密内容；无 gistId 或 404 返回 null
-  async ghGet(gistId){
-    const id = gistId || this.cfg().gistId;
-    if (!id) return null;
-    const r = await fetch('https://api.github.com/gists/' + id, { headers:this.headers() });
+  // 读取仓库文件里的加密内容；文件不存在(404)返回 null
+  async ghGet(){
+    const r = await fetch(this.apiBase(), { headers:this.headers() });
     if (r.status === 404) return null;
-    if (!r.ok) throw new Error('Gist 读取失败 ' + r.status);
+    if (!r.ok) throw new Error('GitHub 读取失败 ' + r.status);
     const j = await r.json();
-    const f = j.files && j.files[this.file()];
-    return (f && f.content != null) ? { text: f.content } : null;
+    return { sha: j.sha, text: atob(j.content.replace(/\s/g,'')) };
   },
 
-  // 在用户的所有 Gist 里找一个文件名匹配本 app 的（用于两端共用同一个 Gist）
-  async findGist(){
-    const r = await fetch('https://api.github.com/gists?per_page=100', { headers:this.headers() });
-    if (!r.ok) return '';
-    const list = await r.json();
-    const hit = (Array.isArray(list) ? list : []).find(g => g.files && g.files[this.file()]);
-    return hit ? hit.id : '';
-  },
-
-  // 写入：无 gistId 则创建私有 Gist，有则整体更新；返回 gist id
-  async ghPut(gistId, content){
-    if (!gistId){
-      const r = await fetch('https://api.github.com/gists', {
-        method:'POST', headers:this.headers(),
-        body: JSON.stringify({
-          description:'Hank的工作台 同步数据（AES 加密）', public:false,
-          files:{ [this.file()]: { content } }
-        })
-      });
-      if (!r.ok) throw new Error('Gist 创建失败 ' + r.status);
-      return (await r.json()).id;
-    }
-    const r = await fetch('https://api.github.com/gists/' + gistId, {
-      method:'PATCH', headers:this.headers(),
-      body: JSON.stringify({ files:{ [this.file()]: { content } } })
-    });
-    if (!r.ok) throw new Error('Gist 写入失败 ' + r.status);
-    return gistId;
+  // 写入仓库文件：第一次创建、之后带 sha 更新；remote 为 ghGet 结果（含 sha）
+  async ghPut(remote, content){
+    const body = { message:'sync: ' + new Date().toISOString(), content: btoa(content) };
+    if (remote && remote.sha) body.sha = remote.sha;
+    const r = await fetch(this.apiBase(), { method:'PUT', headers:this.headers(), body:JSON.stringify(body) });
+    if (r.status === 409) throw new Error('409 同步冲突，请稍后点「立即同步」重试');
+    if (!r.ok) throw new Error('GitHub 写入失败 ' + r.status);
+    return (await r.json()).content.sha;
   },
 
   async remoteToDump(remote){
@@ -1347,37 +1333,33 @@ const Sync = {
     try { return JSON.parse(text); } catch { return {}; }
   },
 
-  async enable(token, pass, presetId){
-    token = (token||'').trim(); pass = (pass||'').trim();
-    presetId = (presetId||'').trim();
+  async enable(owner, repo, token, pass){
+    owner = (owner||'').trim(); repo = (repo||'').trim(); token = (token||'').trim();
+    if (!owner || !repo) return UI.toast('请填 GitHub 用户名和仓库名');
     if (!/^gh[pousr]_/.test(token)) return UI.toast('令牌格式不对，应以 ghp_ 开头');
-    if (pass.length < 8) return UI.toast('同步密码至少 8 位（用来加密 Gist 里的数据）');
+    if ((pass||'').length < 8) return UI.toast('同步密码至少 8 位（用来加密仓库里的数据）');
+    Store.set('_sync', { on:true, owner, repo, path:'sync/hank-data.json' });
     Store.setSecret('syncToken', token);
     Store.setSecret('syncPass', pass);
     try {
-      // 确定要连的 Gist：本地已有 > 用户填的 > 自动按文件名找 > 新建
-      let id = this.cfg().gistId || presetId || await this.findGist();
-      // 先拉对方数据合并到本地，避免直接覆盖把另一台的东西冲掉
-      const remote = id ? await this.ghGet(id) : null;
-      if (remote) {
-        const dump = await this.remoteToDump(remote);
-        Store.mergeRemote(dump);
-      }
+      // 先拉云端已有数据合并到本地，避免直接覆盖把另一台的东西冲掉
+      const remote = await this.ghGet();
+      const dump = await this.remoteToDump(remote);
+      Store.mergeRemote(dump);
       const enc = await Crypto.encrypt(JSON.stringify(Store.dump()), pass);
-      id = await this.ghPut(id, enc);
-      Store.set('_sync', { on:true, gistId:id });
+      await this.ghPut(remote, enc);
       Store.set('_syncAt', Date.now());
       UI.toast('同步已开启，数据已上传');
       setTimeout(() => location.reload(), 900);
     } catch(e){
-      Store.setSecret('syncToken',''); Store.setSecret('syncPass','');
+      Store.set('_sync', { on:false }); Store.setSecret('syncToken',''); Store.setSecret('syncPass','');
       UI.toast(e.message);
     }
   },
 
   disable(){
     if (!confirm('关闭同步？本地数据一条不会少，只是不再和云端对齐。')) return;
-    Store.set('_sync', { on:false, gistId:'' });
+    Store.set('_sync', { on:false });
     Store.setSecret('syncToken',''); Store.setSecret('syncPass','');
     UI.toast('已关闭同步');
     Settings.render();
@@ -1390,7 +1372,7 @@ const Sync = {
       const dump = await this.remoteToDump(remote);
       Store.mergeRemote(dump);
       const enc = await Crypto.encrypt(JSON.stringify(Store.dump()), np);
-      await this.ghPut(this.cfg().gistId, enc);
+      await this.ghPut(remote, enc);
       Store.setSecret('syncPass', np);
       UI.toast('密码已改，数据已用新密码重加密');
     } catch(e){ UI.toast(e.message); }
@@ -1423,14 +1405,13 @@ const Sync = {
     if (!this.on() || this._busy) return 0;
     this._busy = true; this.status('同步中');
     try {
-      if (!force) {
-        const remote = await this.ghGet();
+      const remote = await this.ghGet();          // 总是先拿 sha（force 模式只取 sha、不合并）
+      if (!force && remote) {
         const dump = await this.remoteToDump(remote);
         Store.mergeRemote(dump);
       }
       const enc = await Crypto.encrypt(JSON.stringify(Store.dump()), this.pass());
-      const id = await this.ghPut(this.cfg().gistId, enc);
-      if (id !== this.cfg().gistId) Store.set('_sync', { on:true, gistId:id });
+      await this.ghPut(remote, enc);
       Store.set('_syncAt', Date.now());
       this.status('已同步');
       return 1;
